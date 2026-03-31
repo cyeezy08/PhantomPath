@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    { "id": 1, "type": "internet",    "name": "Attacker C2",     "isCompromised": true  },
+    { "id": 2, "type": "firewall",    "name": "Edge-FW",         "isCompromised": false },
+    { "id": 3, "type": "workstation", "name": "Sam-PC",          "isCompromised": false },
+    { "id": 4, "type": "workstation", "name": "Pal-PC",          "isCompromised": false },
+    { "id": 5, "type": "user",        "name": "sam@corp.local",  "isCompromised": false },
+    { "id": 6, "type": "user",        "name": "pal@corp.local",  "isCompromised": false },
+    { "id": 7, "type": "server",      "name": "FileServer-01",   "isCompromised": false },
+    { "id": 8, "type": "server",      "name": "WebApp-01",       "isCompromised": false },
+    { "id": 9, "type": "admin",       "name": "svc_admin",       "isCompromised": false },
+    { "id": 10,"type": "dc",          "name": "CORP-DC01",       "isCompromised": false },
+    { "id": 11,"type": "db",          "name": "SQLDB-Prod",      "isCompromised": false }
+  ],
+  "edges": [
+    { "from": 1,  "to": 2,  "type": "HasSession"    },
+    { "from": 2,  "to": 3,  "type": "CanRDP"        },
+    { "from": 2,  "to": 4,  "type": "CanRDP"        },
+    { "from": 3,  "to": 5,  "type": "HasSession"    },
+    { "from": 4,  "to": 6,  "type": "HasSession"    },
+    { "from": 5,  "to": 7,  "type": "CanRDP"        },
+    { "from": 5,  "to": 9,  "type": "MemberOf"      },
+    { "from": 5,  "to": 9,  "type": "Kerberoastable"},
+    { "from": 6,  "to": 8,  "type": "CanRDP"        },
+    { "from": 9,  "to": 10, "type": "AdminTo"       },
+    { "from": 9,  "to": 11, "type": "ExecuteDCOM"   },
+    { "from": 7,  "to": 10, "type": "GenericAll"    },
+    { "from": 8,  "to": 11, "type": "Contains"      }
+  ]
+}

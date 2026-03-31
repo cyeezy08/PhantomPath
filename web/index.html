@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PathFinder — AI Attack Path Simulator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #070b10;
+  --surface: #0c1118;
+  --surface2: #111822;
+  --surface3: #161f2e;
+  --border: #1a2535;
+  --border2: #253348;
+  --accent: #00d4ff;
+  --accent-dim: rgba(0,212,255,.15);
+  --red: #ff3a4a;
+  --red-dim: rgba(255,58,74,.12);
+  --amber: #ffb300;
+  --amber-dim: rgba(255,179,0,.1);
+  --green: #00e676;
+  --green-dim: rgba(0,230,118,.08);
+  --purple: #8b5cf6;
+  --purple-dim: rgba(139,92,246,.1);
+  --text: #d8e4f0;
+  --text2: #8a9db5;
+  --text3: #4a5d75;
+  --danger: #ff2d55;
+  --font-main: 'Syne', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-main); overflow: hidden; }
+
+/* ── SCANLINE OVERLAY ── */
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.03) 2px, rgba(0,0,0,.03) 4px);
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ══════════════════════ TOP BAR ══════════════════════ */
+#topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 18px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; z-index: 100; height: 52px;
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 16px; font-weight: 800; color: var(--accent);
+  letter-spacing: -.3px; white-space: nowrap;
+}
+.logo-sub { color: var(--text2); font-weight: 400; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; display: block; margin-top: 1px; }
+.logo svg { width: 30px; height: 30px; flex-shrink: 0; }
+
+.vsep { width: 1px; height: 24px; background: var(--border2); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 13px; border-radius: 5px; border: 1px solid var(--border2);
+  background: transparent; color: var(--text); font-family: var(--font-main);
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; white-space: nowrap;
+  letter-spacing: .2px;
+}
+.btn:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700; }
+.btn.primary:hover { background: #00bfe6; border-color: #00bfe6; }
+.btn.primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn.ghost { border-color: transparent; color: var(--text2); }
+.btn.ghost:hover { border-color: var(--border2); color: var(--text); }
+
+.spacer { flex: 1; }
+
+.topbadge {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 4px; font-size: 10px;
+  font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  font-family: var(--font-mono); white-space: nowrap;
+}
+.topbadge.crit { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,58,74,.3); }
+.topbadge.info { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,212,255,.25); }
+.topbadge.ok   { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,230,118,.25); }
+.topbadge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.topbadge .dot.pulse { animation: blink 1.4s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ══════════════════════ MAIN LAYOUT ══════════════════════ */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* ══════════════════════ LEFT PANEL ══════════════════════ */
+#left-panel {
+  width: 210px; background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; overflow-x: hidden;
+}
+#left-panel::-webkit-scrollbar { width: 3px; }
+#left-panel::-webkit-scrollbar-thumb { background: var(--border2); }
+
+.panel-section { padding: 10px 0; }
+.panel-label { padding: 0 14px 6px; font-size: 9px; font-weight: 700; color: var(--text3); letter-spacing: 2px; text-transform: uppercase; }
+
+.node-type {
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+  cursor: grab; transition: all .12s; user-select: none;
+  border-left: 2px solid transparent;
+}
+.node-type:hover { background: var(--surface2); border-left-color: var(--accent); }
+.node-type:active { cursor: grabbing; opacity: .7; }
+.nt-icon { width: 30px; height: 30px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.nt-label { font-size: 12px; font-weight: 600; line-height: 1.2; }
+.nt-sub { font-size: 10px; color: var(--text3); font-weight: 400; }
+
+.hdiv { height: 1px; background: var(--border); margin: 4px 0; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 12px; }
+.stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.stat-num { font-size: 20px; font-weight: 800; font-family: var(--font-mono); line-height: 1; }
+.stat-lbl { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-top: 3px; }
+
+.edge-legend { padding: 6px 14px 10px; }
+.el-row { display: flex; align-items: center; gap: 7px; padding: 3px 0; font-size: 11px; font-family: var(--font-mono); color: var(--text2); }
+.el-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+.tip-box { margin: 6px 12px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 10px; color: var(--text3); line-height: 1.7; }
+.tip-box strong { color: var(--text2); }
+
+/* ══════════════════════ CANVAS ══════════════════════ */
+#canvas-wrap { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+#canvas { position: absolute; top: 0; left: 0; }
+#canvas-hint {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none; color: var(--text3);
+}
+#canvas-hint h2 { font-size: 32px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; color: var(--text2); }
+#canvas-hint p { font-size: 13px; line-height: 1.7; }
+#canvas-hint .hint-keys { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.hint-key { background: var(--surface); border: 1px solid var(--border2); border-radius: 4px; padding: 3px 10px; font-size: 10px; font-family: var(--font-mono); color: var(--text3); }
+
+/* ══════════════════════ RIGHT PANEL ══════════════════════ */
+#right-panel {
+  width: 360px; background: var(--surface); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; flex-shrink: 0;
+}
+
+#ai-header {
+  padding: 12px 16px 10px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.ai-status { display: flex; align-items: center; gap: 6px; }
+.ai-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 2s ease-in-out infinite; }
+#ai-header h3 { font-size: 13px; font-weight: 700; flex: 1; }
+.model-tag { font-size: 9px; font-family: var(--font-mono); color: var(--text3); background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; }
+
+#ai-output {
+  flex: 1; overflow-y: auto; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+#ai-output::-webkit-scrollbar { width: 3px; }
+#ai-output::-webkit-scrollbar-thumb { background: var(--border2); }
+
+.ai-msg {}
+.ai-msg-label { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; font-family: var(--font-mono); }
+.ai-msg-body {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 12px;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.65; color: var(--text);
+}
+.ai-msg.user .ai-msg-body { background: var(--accent-dim); border-color: rgba(0,212,255,.2); }
+.ai-msg.alert .ai-msg-body { background: var(--red-dim); border-color: rgba(255,58,74,.25); color: #ff8b94; }
+.ai-msg.warn .ai-msg-body { background: var(--amber-dim); border-color: rgba(255,179,0,.25); color: #ffd54f; }
+.ai-msg.system .ai-msg-body { color: var(--text2); }
+
+.ai-section-head { font-weight: 700; color: var(--accent); margin-bottom: 4px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.ai-path-chain { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
+.apc-node { padding: 1px 7px; border-radius: 3px; font-size: 10px; background: var(--surface); border: 1px solid var(--border2); color: var(--accent); }
+.apc-node.danger { background: var(--red-dim); border-color: rgba(255,58,74,.35); color: var(--red); }
+.apc-arrow { color: var(--text3); font-size: 9px; }
+.apc-edge { color: var(--text3); font-size: 9px; font-style: italic; }
+
+.loading-msg .ai-msg-body { color: var(--text3); }
+.loading-dots::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
+@keyframes dots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} 100%{content:''} }
+
+.qa-section { padding: 8px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.qa-label { font-size: 9px; font-weight: 700; color: var(--text3); letter-spacing: 1.5px; text-transform: uppercase; font-family: var(--font-mono); margin-bottom: 6px; }
+.qa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.qa-btn {
+  padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border); background: transparent;
+  color: var(--text3); font-family: var(--font-mono); font-size: 10px; cursor: pointer;
+  text-align: left; transition: all .12s; line-height: 1.4;
+}
+.qa-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+#ai-input-row { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-shrink: 0; }
+#ai-input {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 5px; padding: 8px 11px; color: var(--text); font-family: var(--font-mono);
+  font-size: 11.5px; outline: none; resize: none; height: 52px; line-height: 1.5;
+}
+#ai-input:focus { border-color: var(--accent); }
+#ai-input::placeholder { color: var(--text3); }
+
+/* ══════════════════════ CTX MENU ══════════════════════ */
+#ctx-menu {
+  position: fixed; background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 8px; overflow: hidden; z-index: 1000; display: none; min-width: 190px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.7);
+}
+.ctx-item {
+  padding: 9px 14px; font-size: 12px; cursor: pointer; transition: background .1s;
+  border-bottom: 1px solid var(--border); color: var(--text); display: flex; align-items: center; gap: 8px;
+}
+.ctx-item:last-child { border-bottom: none; }
+.ctx-item:hover { background: var(--surface3); }
+.ctx-item:hover.accent { color: var(--accent); }
+.ctx-item:hover.danger { color: var(--red); }
+.ctx-sep { height: 1px; background: var(--border); }
+
+/* ══════════════════════ EXPORT PANEL ══════════════════════ */
+#export-modal, #settings-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 2000;
+  display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+}
+#export-modal.open, #settings-modal.open { display: flex; }
+.provider-btn {
+  background: var(--surface2); border: 1px solid var(--border2); color: var(--text2);
+  border-radius: 6px; padding: 7px 16px; font-size: 12px; font-family: var(--font-mono);
+  cursor: pointer; transition: all .15s;
+}
+.provider-btn:hover { border-color: var(--accent); color: var(--accent); }
+.provider-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,.08); }
+#settings-modal input, #settings-modal select {
+  background: var(--surface2); border: 1px solid var(--border2); color: var(--text1);
+  border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: var(--font-mono); outline: none;
+  transition: border-color .15s;
+}
+#settings-modal input:focus, #settings-modal select:focus { border-color: var(--accent); }
+#settings-modal select option { background: var(--surface2); }
+.modal-box {
+  background: var(--surface); border: 1px solid var(--border2); border-radius: 12px;
+  padding: 24px; width: 520px; max-height: 80vh; overflow-y: auto;
+}
+.modal-box h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; color: var(--accent); }
+.modal-box pre {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text2); white-space: pre-wrap; overflow-x: auto;
+  max-height: 300px; overflow-y: auto; line-height: 1.6;
+}
+.modal-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<div id="ctx-menu"></div>
+
+<div id="export-modal">
+  <div class="modal-box">
+    <h2>📤 Export Report</h2>
+    <pre id="export-content"></pre>
+    <div class="modal-actions">
+      <button class="btn" onclick="copyExport()">Copy to Clipboard</button>
+      <button class="btn" onclick="downloadExport()">Download .txt</button>
+      <button class="btn ghost" onclick="closeExport()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings-modal">
+  <div class="modal-box" style="min-width:420px;max-width:520px">
+    <h2>⚙️ AI Provider Settings</h2>
+    <p style="color:var(--text3);font-size:12px;margin-bottom:18px;line-height:1.6">Choose your AI provider and paste your API key. Keys are stored in localStorage and never sent anywhere except the provider's API.</p>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:6px;font-family:var(--font-mono)">PROVIDER</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="provider-btns">
+        <button class="provider-btn active" data-p="anthropic" onclick="selectProvider('anthropic')">Anthropic</button>
+        <button class="provider-btn" data-p="openai" onclick="selectProvider('openai')">OpenAI</button>
+        <button class="provider-btn" data-p="openrouter" onclick="selectProvider('openrouter')">OpenRouter</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:6px;font-family:var(--font-mono)">MODEL</label>
+      <select id="model-select" style="width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text1);border-radius:6px;padding:8px 10px;font-size:13px;font-family:var(--font-mono);outline:none"></select>
+    </div>
+
+    <div style="margin-bottom:18px">
+      <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:6px;font-family:var(--font-mono)">API KEY</label>
+      <div style="display:flex;gap:8px">
+        <input id="api-key-input" type="password" placeholder="Paste your API key here…"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text1);border-radius:6px;padding:8px 10px;font-size:13px;font-family:var(--font-mono);outline:none"/>
+        <button class="btn ghost" onclick="toggleKeyVis()" id="key-vis-btn" title="Show/hide key">👁</button>
+      </div>
+      <div id="provider-hint" style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5"></div>
+    </div>
+
+    <div id="settings-status" style="font-size:12px;color:var(--green);margin-bottom:12px;min-height:16px"></div>
+
+    <div class="modal-actions">
+      <button class="btn primary" onclick="saveSettings()">Save & Apply</button>
+      <button class="btn ghost" onclick="closeSettings()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div class="logo">
+      <svg viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="15,2 28,9 28,21 15,28 2,21 2,9" fill="rgba(0,212,255,.07)" stroke="#00d4ff" stroke-width="1.2"/>
+        <circle cx="15" cy="15" r="3.5" fill="#00d4ff"/>
+        <line x1="15" y1="8" x2="15" y2="11.5" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="15" y1="18.5" x2="15" y2="22" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="8" y1="15" x2="11.5" y2="15" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="18.5" y1="15" x2="22" y2="15" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="15" cy="8" r="2" fill="rgba(0,212,255,.4)"/>
+        <circle cx="22" cy="21" r="2" fill="rgba(0,212,255,.4)"/>
+        <circle cx="8" cy="21" r="2" fill="rgba(0,212,255,.4)"/>
+      </svg>
+      <div>PhantomPath<br><span class="logo-sub">Dev By ChinYiZhe</span></div>
+    </div>
+    <div class="vsep"></div>
+    <button class="btn" onclick="addDemoNetwork()">⚡ Demo Network</button>
+    <button class="btn" onclick="importJSON()">📥 Import</button>
+    <button class="btn" onclick="exportReport()">📤 Export</button>
+    <button class="btn ghost" onclick="clearAll()">✕ Clear</button>
+    <button class="btn ghost" onclick="openSettings()" id="settings-btn" title="AI Provider Settings">⚙️ <span id="provider-badge">Anthropic</span></button>
+    <div class="spacer"></div>
+    <div class="topbadge crit"><div class="dot pulse" id="td-dot"></div><span id="td-crit">0 Critical</span></div>
+    <div class="topbadge info" style="margin-left:6px"><span id="td-nodes">0 Nodes</span></div>
+    <div class="topbadge ok" style="margin-left:6px"><span id="td-edges">0 Edges</span></div>
+    <div class="vsep"></div>
+    <button class="btn primary" id="analyze-btn" onclick="runAIAnalysis()">🤖 Analyze Paths</button>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- LEFT -->
+    <div id="left-panel">
+      <div class="panel-section">
+        <div class="panel-label">Node Types — drag to canvas</div>
+        <div class="node-type" draggable="true" data-type="internet" ondragstart="startDrag(event,'internet')">
+          <div class="nt-icon" style="background:rgba(255,58,74,.1);color:#ff6b81;">🌐</div>
+          <div><div class="nt-label">Internet / C2</div><div class="nt-sub">Attacker entry</div></div>
+        </div>
+        <div class="node-type" draggable="true" data-type="workstation" ondragstart="startDrag(event,'workstation')">
+          <div class="nt-icon" style="background:rgba(0,212,255,.1);color:#00d4ff;">💻</div>
+          <div><div class="nt-label">Workstation</div><div class="nt-sub">User endpoint</div></div>
+        </div>
+        <div class="node-type" draggable="true" data-type="server" ondragstart="startDrag(event,'server')">
+          <div class="nt-icon" style="background:rgba(139,92,246,.1);color:#a78bfa;">🖥</div>
+          <div><div class="nt-label">Server</div><div class="nt-sub">Internal host</div></div>
+        </div>
+        <div class="node-type" draggable="true" data-type="dc" ondragstart="startDrag(event,'dc')">
+          <div class="nt-icon" style="background:rgba(255,179,0,.1);color:#ffb300;">🏛</div>
+          <div><div class="nt-label">Domain Controller</div><div class="nt-sub">AD / Kerberos</div></div>
+        </div>
+        <div class="node-type" draggable="true" data-type="user" ondragstart="startDrag(event,'user')">
+          <div class="nt-icon" style="background:rgba(0,230,118,.08);color:#00e676;">👤</div>
+          <div><div class="nt-label">User Account</div><div class="nt-sub">Domain user</div></div>
+        </div>
+        <div class="node-type" draggable="true" data-type="admin" ondragstart="startDrag(event,'admin')">
+          <div class="nt-icon" style="background:rgba(255,58,74,.12);color:#ff5252;">🔑</div>
+          <div><div class="nt-label">Admin Account</div><div class="nt-sub">Privileged user</div></div>
+        </div>
+        <div class="node-type" draggable="true" data-type="db" ondragstart="startDrag(event,'db')">
+          <div class="nt-icon" style="background:rgba(0,212,255,.07);color:#80deea;">🗄</div>
+          <div><div class="nt-label">Database</div><div class="nt-sub">SQL / NoSQL</div></div>
+        </div>
+        <div class="node-type" draggable="true" data-type="firewall" ondragstart="startDrag(event,'firewall')">
+          <div class="nt-icon" style="background:rgba(255,179,0,.08);color:#ffd54f;">🛡</div>
+          <div><div class="nt-label">Firewall / DMZ</div><div class="nt-sub">Network control</div></div>
+        </div>
+      </div>
+
+      <div class="hdiv"></div>
+
+      <div class="panel-section">
+        <div class="panel-label">Graph Stats</div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-num" id="s-nodes" style="color:var(--accent)">0</div><div class="stat-lbl">Nodes</div></div>
+          <div class="stat-card"><div class="stat-num" id="s-edges" style="color:var(--purple)">0</div><div class="stat-lbl">Edges</div></div>
+          <div class="stat-card"><div class="stat-num" id="s-paths" style="color:var(--red)">—</div><div class="stat-lbl">Attack Paths</div></div>
+          <div class="stat-card"><div class="stat-num" id="s-depth" style="color:var(--amber)">—</div><div class="stat-lbl">Max Depth</div></div>
+        </div>
+      </div>
+
+      <div class="hdiv"></div>
+
+      <div class="panel-section">
+        <div class="panel-label">Relationship Types</div>
+        <div class="edge-legend">
+          <div class="el-row"><div class="el-dot" style="background:#00d4ff"></div>HasSession</div>
+          <div class="el-row"><div class="el-dot" style="background:#ff5252"></div>AdminTo</div>
+          <div class="el-row"><div class="el-dot" style="background:#a78bfa"></div>CanRDP</div>
+          <div class="el-row"><div class="el-dot" style="background:#00e676"></div>MemberOf</div>
+          <div class="el-row"><div class="el-dot" style="background:#ffb300"></div>ExecuteDCOM</div>
+          <div class="el-row"><div class="el-dot" style="background:#ff6b81"></div>GenericAll</div>
+          <div class="el-row"><div class="el-dot" style="background:#80deea"></div>AllowedToDelegate</div>
+          <div class="el-row"><div class="el-dot" style="background:#b0bec5"></div>Contains</div>
+        </div>
+      </div>
+
+      <div class="hdiv"></div>
+
+      <div class="tip-box">
+        <strong>How to use:</strong><br>
+        1. Drag nodes onto canvas<br>
+        2. Right-click node → Connect<br>
+        3. Click Analyze Paths for AI red team report<br>
+        4. Right-click → Mark Compromised to simulate breach
+      </div>
+    </div>
+
+    <!-- CANVAS -->
+    <div id="canvas-wrap" ondragover="event.preventDefault()" ondrop="dropNode(event)">
+      <canvas id="canvas"></canvas>
+      <div id="canvas-hint">
+        <h2>Build Your Attack Graph</h2>
+        <p>Drag node types from the left panel onto the canvas<br>or load a demo network to get started.</p>
+        <div class="hint-keys">
+          <span class="hint-key">Drag → place node</span>
+          <span class="hint-key">Right-click → connect / actions</span>
+          <span class="hint-key">Click drag → move node</span>
+          <span class="hint-key">⚡ Demo Network → quick start</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div id="right-panel">
+      <div id="ai-header">
+        <div class="ai-status"><div class="ai-pulse"></div></div>
+        <h3>AI Threat Intelligence</h3>
+        <span class="model-tag">claude-sonnet-4</span>
+      </div>
+
+      <div id="ai-output">
+        <div class="ai-msg system">
+          <div class="ai-msg-label">PathFinder Engine</div>
+          <div class="ai-msg-body">
+            Build a network graph and click <span style="color:var(--accent);font-weight:700;">Analyze Paths</span> to run AI-powered red team analysis.<br><br>
+            I'll identify:<br>
+            → Privilege escalation chains<br>
+            → Lateral movement routes<br>
+            → High-value target ranking<br>
+            → MITRE ATT&CK TTPs<br>
+            → Defensive recommendations<br><br>
+            <span style="color:var(--text3);font-size:11px;">⚙️ Click <strong style="color:var(--accent)">Settings</strong> in the top bar to choose your AI provider (Anthropic, OpenAI, or OpenRouter) and paste your API key.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="qa-section">
+        <div class="qa-label">Quick Queries</div>
+        <div class="qa-grid">
+          <button class="qa-btn" onclick="quickQuery('What is the most dangerous privilege escalation path in this network? List each hop.')">↗ Priv-esc chain</button>
+          <button class="qa-btn" onclick="quickQuery('Which nodes are lateral movement chokepoints an attacker would pivot through?')">↗ Pivot points</button>
+          <button class="qa-btn" onclick="quickQuery('How would an attacker move from internet/external access all the way to Domain Admin?')">↗ Full kill chain</button>
+          <button class="qa-btn" onclick="quickQuery('What are the top 3 defensive controls that would break the most attack paths?')">↗ Defenses</button>
+          <button class="qa-btn" onclick="quickQuery('List all Kerberoasting, Pass-the-Hash, and DCSync opportunities in this graph.')">↗ TTPs</button>
+          <button class="qa-btn" onclick="quickQuery('What is the blast radius if the compromised nodes are already owned by the attacker?')">↗ Blast radius</button>
+        </div>
+      </div>
+
+      <div id="ai-input-row">
+        <textarea id="ai-input" placeholder="Ask about attack paths, TTPs, defenses…&#10;(Enter to send, Shift+Enter for newline)"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendQuery();}"></textarea>
+        <button class="btn primary" onclick="sendQuery()" style="align-self:flex-end;height:36px;padding:0 14px;">→</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+
+let nodes = [], edges = [], nodeIdCounter = 0;
+let draggingNode = null, dragOffX = 0, dragOffY = 0;
+let connectingFrom = null;
+let selectedNode = null;
+let mouseX = 0, mouseY = 0;
+let aiLoading = false;
+let lastReport = '';
+let dragType = null;
+
+const NODE_CFG = {
+  internet:    { color: '#ff6b81', bg: 'rgba(255,107,129,.1)', emoji: '🌐', label: 'Internet/C2',   risk: 3 },
+  workstation: { color: '#00d4ff', bg: 'rgba(0,212,255,.09)', emoji: '💻', label: 'Workstation',    risk: 1 },
+  server:      { color: '#a78bfa', bg: 'rgba(167,139,250,.1)', emoji: '🖥', label: 'Server',        risk: 2 },
+  dc:          { color: '#ffb300', bg: 'rgba(255,179,0,.1)',   emoji: '🏛', label: 'DC',            risk: 3 },
+  user:        { color: '#00e676', bg: 'rgba(0,230,118,.08)', emoji: '👤', label: 'User',           risk: 1 },
+  admin:       { color: '#ff5252', bg: 'rgba(255,82,82,.12)', emoji: '🔑', label: 'Admin',          risk: 3 },
+  db:          { color: '#80deea', bg: 'rgba(128,222,234,.08)', emoji: '🗄', label: 'Database',     risk: 2 },
+  firewall:    { color: '#ffd54f', bg: 'rgba(255,213,79,.08)', emoji: '🛡', label: 'Firewall',      risk: 0 },
+};
+
+const EDGE_TYPES = [
+  'HasSession','AdminTo','CanRDP','MemberOf','ExecuteDCOM',
+  'GenericAll','AllowedToDelegate','Contains','Kerberoastable','WriteDACL'
+];
+
+// ═══════════════════════════════════════════════════════════════
+//  CANVAS SETUP + RESIZE
+// ═══════════════════════════════════════════════════════════════
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  canvas.width = r.width; canvas.height = r.height;
+  draw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAW
+// ═══════════════════════════════════════════════════════════════
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('canvas-hint').style.display = nodes.length === 0 ? 'block' : 'none';
+
+  // grid
+  ctx.save();
+  ctx.strokeStyle = 'rgba(26,37,53,.7)';
+  ctx.lineWidth = .5;
+  const gs = 40;
+  for (let x = 0; x < canvas.width; x += gs) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+  for (let y = 0; y < canvas.height; y += gs) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+  ctx.restore();
+
+  // edges
+  edges.forEach(e => drawEdge(e));
+
+  // live connect line
+  if (connectingFrom !== null) {
+    const n = nodes.find(x => x.id === connectingFrom);
+    if (n) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,212,255,.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 5]);
+      ctx.shadowColor = '#00d4ff'; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(mouseX, mouseY); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  nodes.forEach(n => drawNode(n));
+  updateHUD();
+}
+
+function drawEdge(e) {
+  const a = nodes.find(x => x.id === e.from);
+  const b = nodes.find(x => x.id === e.to);
+  if (!a || !b) return;
+  const isPath = e.isAttackPath;
+  ctx.save();
+  ctx.strokeStyle = isPath ? 'rgba(255,45,55,.85)' : 'rgba(0,212,255,.3)';
+  ctx.lineWidth = isPath ? 2.2 : 1.4;
+  if (isPath) { ctx.shadowColor = '#ff2d55'; ctx.shadowBlur = 10; }
+
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const cx1 = a.x + dx * 0.35 + dy * 0.15;
+  const cy1 = a.y + dy * 0.35 - dx * 0.15;
+  const cx2 = a.x + dx * 0.65 - dy * 0.15;
+  const cy2 = a.y + dy * 0.65 + dx * 0.15;
+
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.bezierCurveTo(cx1, cy1, cx2, cy2, b.x, b.y);
+  ctx.stroke();
+
+  // arrowhead
+  const t = 0.85;
+  const px = bezier(t, a.x, cx1, cx2, b.x);
+  const py = bezier(t, a.y, cy1, cy2, b.y);
+  const angle = Math.atan2(b.y - py, b.x - px);
+  ctx.save();
+  ctx.fillStyle = isPath ? '#ff2d55' : 'rgba(0,212,255,.6)';
+  ctx.shadowBlur = 0;
+  ctx.translate(b.x, b.y); ctx.rotate(angle);
+  ctx.beginPath(); ctx.moveTo(-13,-5); ctx.lineTo(0,0); ctx.lineTo(-13,5); ctx.fill();
+  ctx.restore();
+
+  // edge label
+  const mx = bezier(.5, a.x, cx1, cx2, b.x);
+  const my = bezier(.5, a.y, cy1, cy2, b.y) - 10;
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.fillStyle = isPath ? 'rgba(255,100,100,.9)' : 'rgba(74,93,117,.9)';
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 0;
+  ctx.fillText(e.type, mx, my);
+  ctx.restore();
+}
+
+function bezier(t, p0, p1, p2, p3) {
+  return (1-t)**3*p0 + 3*(1-t)**2*t*p1 + 3*(1-t)*t**2*p2 + t**3*p3;
+}
+
+function drawNode(n) {
+  const cfg = NODE_CFG[n.type] || NODE_CFG.workstation;
+  const R = 36;
+  const isSelected = selectedNode && selectedNode.id === n.id;
+  ctx.save();
+
+  if (isSelected) { ctx.shadowColor = cfg.color; ctx.shadowBlur = 20; }
+  else if (n.isCompromised) { ctx.shadowColor = '#ff2d55'; ctx.shadowBlur = 14; }
+
+  // outer ring
+  if (isSelected || n.isCompromised) {
+    ctx.beginPath(); ctx.arc(n.x, n.y, R + 6, 0, Math.PI*2);
+    ctx.strokeStyle = n.isCompromised ? 'rgba(255,45,55,.5)' : cfg.color + '55';
+    ctx.lineWidth = 1.2; ctx.stroke();
+  }
+
+  // body
+  ctx.beginPath(); ctx.arc(n.x, n.y, R, 0, Math.PI*2);
+  ctx.fillStyle = n.isCompromised ? 'rgba(255,45,55,.14)' : cfg.bg;
+  ctx.fill();
+  ctx.strokeStyle = n.isCompromised ? '#ff2d55' : cfg.color;
+  ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // emoji
+  ctx.font = '18px serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(cfg.emoji, n.x, n.y - 5);
+
+  // name
+  ctx.font = '700 10px Syne, sans-serif';
+  ctx.fillStyle = cfg.color;
+  const nameStr = n.name.length > 13 ? n.name.slice(0, 12) + '…' : n.name;
+  ctx.fillText(nameStr, n.x, n.y + 13);
+
+  // type tag
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.fillStyle = 'rgba(74,93,117,.85)';
+  ctx.fillText(cfg.label, n.x, n.y + 25);
+
+  // compromised badge
+  if (n.isCompromised) {
+    ctx.font = 'bold 9px Syne, sans-serif';
+    ctx.fillStyle = '#ff2d55';
+    ctx.fillText('● PWNED', n.x, n.y - R - 8);
+  }
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  HUD / STATS
+// ═══════════════════════════════════════════════════════════════
+function updateHUD() {
+  const nn = nodes.length, ne = edges.length;
+  const critPaths = edges.filter(e => e.isAttackPath).length;
+  document.getElementById('s-nodes').textContent = nn;
+  document.getElementById('s-edges').textContent = ne;
+  document.getElementById('td-nodes').textContent = nn + ' Nodes';
+  document.getElementById('td-edges').textContent = ne + ' Edges';
+  document.getElementById('td-crit').textContent = critPaths + ' Critical';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAG FROM PANEL
+// ═══════════════════════════════════════════════════════════════
+function startDrag(e, type) { dragType = type; e.dataTransfer.effectAllowed = 'copy'; }
+
+function dropNode(e) {
+  e.preventDefault();
+  if (!dragType) return;
+  const r = wrap.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const cfg = NODE_CFG[dragType];
+  const name = prompt(`Name this ${cfg.label}:`, `${cfg.label}-${nodeIdCounter + 1}`);
+  if (name === null) { dragType = null; return; }
+  nodes.push({ id: ++nodeIdCounter, type: dragType, x, y, name: name.trim() || `${cfg.label}-${nodeIdCounter}`, isCompromised: false });
+  dragType = null;
+  draw();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CANVAS MOUSE EVENTS
+// ═══════════════════════════════════════════════════════════════
+canvas.addEventListener('mousedown', e => {
+  const {mx, my} = getMouse(e);
+  const hit = hitTest(mx, my);
+
+  if (connectingFrom !== null) {
+    if (hit && hit.id !== connectingFrom) {
+      const choice = prompt(
+        'Relationship type (enter number):\n' + EDGE_TYPES.map((t,i)=>`${i+1}. ${t}`).join('\n'), '1'
+      );
+      const idx = parseInt(choice) - 1;
+      if (idx >= 0 && idx < EDGE_TYPES.length) {
+        edges.push({ id: Date.now(), from: connectingFrom, to: hit.id, type: EDGE_TYPES[idx], isAttackPath: false });
+      }
+    }
+    connectingFrom = null;
+    draw();
+    return;
+  }
+
+  if (hit) {
+    selectedNode = hit;
+    draggingNode = hit;
+    dragOffX = mx - hit.x; dragOffY = my - hit.y;
+  } else {
+    selectedNode = null;
+  }
+  draw();
+});
+
+canvas.addEventListener('mousemove', e => {
+  const {mx, my} = getMouse(e);
+  mouseX = mx; mouseY = my;
+  if (draggingNode) { draggingNode.x = mx - dragOffX; draggingNode.y = my - dragOffY; }
+  if (draggingNode || connectingFrom !== null) draw();
+  canvas.style.cursor = hitTest(mx, my) ? 'pointer' : connectingFrom !== null ? 'crosshair' : 'default';
+});
+
+canvas.addEventListener('mouseup', () => { draggingNode = null; });
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const {mx, my} = getMouse(e);
+  const hit = hitTest(mx, my);
+  showCtxMenu(e.clientX, e.clientY, hit);
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#ctx-menu')) hideCtx();
+});
+
+function getMouse(e) {
+  const r = wrap.getBoundingClientRect();
+  return { mx: e.clientX - r.left, my: e.clientY - r.top };
+}
+function hitTest(mx, my) {
+  return nodes.slice().reverse().find(n => Math.hypot(n.x - mx, n.y - my) < 40);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CONTEXT MENU
+// ═══════════════════════════════════════════════════════════════
+function showCtxMenu(cx, cy, node) {
+  const m = document.getElementById('ctx-menu');
+  if (node) {
+    m.innerHTML = `
+      <div class="ctx-item accent" onclick="beginConnect(${node.id});hideCtx()">🔗 Connect to…</div>
+      <div class="ctx-item accent" onclick="analyzeNode(${node.id});hideCtx()">🤖 AI: Analyze this node</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" onclick="toggleCompromised(${node.id});hideCtx()">${node.isCompromised ? '✅ Unmark' : '🔴 Mark'} Compromised</div>
+      <div class="ctx-item" onclick="renameNode(${node.id});hideCtx()">✏️ Rename</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item danger" onclick="deleteNode(${node.id});hideCtx()">✕ Delete node</div>`;
+  } else {
+    m.innerHTML = `
+      <div class="ctx-item accent" onclick="addDemoNetwork();hideCtx()">⚡ Load Demo Network</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item danger" onclick="clearAll();hideCtx()">✕ Clear all</div>`;
+  }
+  m.style.left = cx + 'px'; m.style.top = cy + 'px'; m.style.display = 'block';
+}
+function hideCtx() { document.getElementById('ctx-menu').style.display = 'none'; }
+
+function beginConnect(id) { connectingFrom = id; }
+function toggleCompromised(id) {
+  const n = nodes.find(x => x.id === id);
+  if (n) { n.isCompromised = !n.isCompromised; draw(); }
+}
+function renameNode(id) {
+  const n = nodes.find(x => x.id === id);
+  if (!n) return;
+  const name = prompt('Rename node:', n.name);
+  if (name !== null && name.trim()) { n.name = name.trim(); draw(); }
+}
+function deleteNode(id) {
+  nodes = nodes.filter(n => n.id !== id);
+  edges = edges.filter(e => e.from !== id && e.to !== id);
+  if (selectedNode?.id === id) selectedNode = null;
+  draw();
+}
+function clearAll() {
+  nodes = []; edges = []; selectedNode = null; connectingFrom = null;
+  edges.forEach(e => e.isAttackPath = false);
+  document.getElementById('s-paths').textContent = '—';
+  document.getElementById('s-depth').textContent = '—';
+  clearAIOutput();
+  draw();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DEMO NETWORK
+// ═══════════════════════════════════════════════════════════════
+function addDemoNetwork() {
+  nodes = []; edges = []; nodeIdCounter = 0;
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+
+  nodes = [
+    { id: ++nodeIdCounter, type: 'internet',    x: cx-390, y: cy,      name: 'Attacker C2',  isCompromised: true  },
+    { id: ++nodeIdCounter, type: 'firewall',    x: cx-260, y: cy,      name: 'Edge-FW',      isCompromised: false },
+    { id: ++nodeIdCounter, type: 'workstation', x: cx-120, y: cy-100,  name: 'Sam-PC',       isCompromised: false },
+    { id: ++nodeIdCounter, type: 'workstation', x: cx-120, y: cy+100,  name: 'Pal-PC',       isCompromised: false },
+    { id: ++nodeIdCounter, type: 'user',        x: cx+20,  y: cy-160,  name: 'sam@corp.local',isCompromised: false },
+    { id: ++nodeIdCounter, type: 'user',        x: cx+20,  y: cy+160,  name: 'pal@corp.local',isCompromised: false },
+    { id: ++nodeIdCounter, type: 'server',      x: cx+160, y: cy-80,   name: 'FileServer-01',isCompromised: false },
+    { id: ++nodeIdCounter, type: 'server',      x: cx+160, y: cy+80,   name: 'WebApp-01',    isCompromised: false },
+    { id: ++nodeIdCounter, type: 'admin',       x: cx+310, y: cy-100,  name: 'svc_admin',    isCompromised: false },
+    { id: ++nodeIdCounter, type: 'dc',          x: cx+410, y: cy,      name: 'CORP-DC01',    isCompromised: false },
+    { id: ++nodeIdCounter, type: 'db',          x: cx+310, y: cy+120,  name: 'SQLDB-Prod',   isCompromised: false },
+  ];
+
+  edges = [
+    { id:1,  from:1,  to:2,  type:'HasSession',        isAttackPath:false },
+    { id:2,  from:2,  to:3,  type:'CanRDP',             isAttackPath:false },
+    { id:3,  from:2,  to:4,  type:'CanRDP',             isAttackPath:false },
+    { id:4,  from:3,  to:5,  type:'HasSession',         isAttackPath:false },
+    { id:5,  from:4,  to:6,  type:'HasSession',         isAttackPath:false },
+    { id:6,  from:5,  to:7,  type:'CanRDP',             isAttackPath:false },
+    { id:7,  from:5,  to:9,  type:'MemberOf',           isAttackPath:false },
+    { id:8,  from:6,  to:8,  type:'CanRDP',             isAttackPath:false },
+    { id:9,  from:9,  to:10, type:'AdminTo',            isAttackPath:false },
+    { id:10, from:9,  to:11, type:'ExecuteDCOM',        isAttackPath:false },
+    { id:11, from:7,  to:10, type:'GenericAll',         isAttackPath:false },
+    { id:12, from:8,  to:11, type:'Contains',           isAttackPath:false },
+    { id:13, from:5,  to:9,  type:'Kerberoastable',     isAttackPath:false },
+  ];
+
+  draw();
+  addAIMsg('system', 'Demo network loaded: 11 nodes, 13 edges. This simulates a typical corporate Active Directory environment with an attacker C2, user workstations, servers, service accounts, and a Domain Controller. Click <span style="color:var(--accent);font-weight:700">Analyze Paths</span> to run full AI red team analysis.');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AI ENGINE
+// ═══════════════════════════════════════════════════════════════
+function graphToContext() {
+  if (nodes.length === 0) return 'No nodes in graph.';
+  const nl = nodes.map(n => `  • ${n.name} [${NODE_CFG[n.type]?.label || n.type}, Risk:${NODE_CFG[n.type]?.risk || 1}]${n.isCompromised ? ' [ALREADY COMPROMISED]' : ''}`).join('\n');
+  const el = edges.map(e => {
+    const a = nodes.find(x => x.id === e.from)?.name || `node${e.from}`;
+    const b = nodes.find(x => x.id === e.to)?.name || `node${e.to}`;
+    return `  ${a} --[${e.type}]--> ${b}`;
+  }).join('\n');
+  return `NETWORK GRAPH\n=============\nNodes:\n${nl}\n\nEdges (relationships):\n${el}\n\nCompromised nodes: ${nodes.filter(n => n.isCompromised).map(n => n.name).join(', ') || 'none'}`;
+}
+
+const SYSTEM_PROMPT = `You are an elite red team operator and Active Directory security researcher with deep expertise in BloodHound attack paths, MITRE ATT&CK framework, and Windows privilege escalation. You analyze network graphs to identify realistic attack paths.
+
+When analyzing a graph, structure your response with EXACTLY these section headers:
+
+## CRITICAL ATTACK PATHS
+List the top 2-3 most dangerous complete paths from external/compromised nodes to high-value targets (Domain Controllers, Admin accounts, databases). Format each as:
+PATH N: NodeA —[EdgeType]→ NodeB —[EdgeType]→ ... → TARGET
+Risk: CRITICAL/HIGH/MEDIUM
+
+## PRIVILEGE ESCALATION CHAINS
+Describe the key privilege escalation opportunities. Reference specific techniques:
+- Kerberoasting (T1558.003)
+- Pass-the-Hash (T1550.002)
+- DCSync (T1003.006)
+- Token Impersonation (T1134)
+- DCOM Lateral Movement (T1021.003)
+Be specific about which nodes enable which techniques.
+
+## HIGH-VALUE TARGETS
+Rank the top targets an attacker should prioritize and explain why each is valuable. Include what an attacker gains by owning each.
+
+## RISK ASSESSMENT
+Overall risk rating: CRITICAL / HIGH / MEDIUM / LOW
+One paragraph explaining the overall security posture.
+
+## DEFENSIVE RECOMMENDATIONS
+5 specific, actionable controls that would break the most attack paths. Reference specific security controls (PAM solutions, tiered admin model, LAPS, etc.).
+
+Be technically precise, reference real TTPs, and keep total response under 500 words.`;
+
+// ═══════════════════════════════════════════════════════════════
+//  MULTI-PROVIDER AI ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+const PROVIDERS = {
+  anthropic: {
+    label: 'Anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    keyPlaceholder: 'sk-ant-…',
+    hint: 'Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a>',
+    models: [
+      { id: 'claude-sonnet-4-20250514',  label: 'Claude Sonnet 4 (recommended)' },
+      { id: 'claude-opus-4-20250514',    label: 'Claude Opus 4 (most capable)' },
+      { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (fastest)' },
+    ]
+  },
+  openai: {
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com',
+    keyPlaceholder: 'sk-…',
+    hint: 'Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">platform.openai.com</a><br><span style="color:var(--red);font-size:11px">⚠ Requires local server — run <code>python serve.py</code> instead of opening file://</span>',
+    models: [
+      { id: 'gpt-4o',      label: 'GPT-4o (recommended)' },
+      { id: 'gpt-4o-mini', label: 'GPT-4o Mini (fast)' },
+      { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+      { id: 'o3-mini',     label: 'o3-mini (reasoning)' },
+    ]
+  },
+  openrouter: {
+    label: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api',
+    keyPlaceholder: 'sk-or-…',
+    hint: 'Get your key at <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--accent)">openrouter.ai</a> — 100+ models with one key.<br><span style="color:var(--red);font-size:11px">⚠ Requires local server — run <code>python serve.py</code> instead of opening file://</span>',
+    models: [
+      { id: 'anthropic/claude-sonnet-4',         label: 'Claude Sonnet 4 (via OR)' },
+      { id: 'openai/gpt-4o',                     label: 'GPT-4o (via OR)' },
+      { id: 'google/gemini-2.5-pro',             label: 'Gemini 2.5 Pro (via OR)' },
+      { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (via OR)' },
+      { id: 'mistralai/mistral-large',           label: 'Mistral Large (via OR)' },
+      { id: 'deepseek/deepseek-r1',              label: 'DeepSeek R1 (via OR)' },
+    ]
+  }
+};
+
+let aiProvider = localStorage.getItem('pf_provider') || 'anthropic';
+let aiModel    = localStorage.getItem('pf_model')    || PROVIDERS.anthropic.models[0].id;
+let aiKey      = localStorage.getItem('pf_key')      || '';
+
+// Update model tag on load
+(function initProviderUI() {
+  const short = aiModel.split('/').pop().replace(/-\d{8}$/, '');
+  const tag = document.querySelector('.model-tag');
+  if (tag) tag.textContent = short;
+  const badge = document.getElementById('provider-badge');
+  if (badge) badge.textContent = PROVIDERS[aiProvider]?.label || aiProvider;
+})();
+
+async function callAI(systemP, userP) {
+  if (!aiKey) throw new Error('No API key configured — click ⚙️ Settings to add your key.');
+
+  if (aiProvider === 'anthropic') {
+    const res = await fetch(`${PROVIDERS.anthropic.baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': aiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: aiModel, max_tokens: 1000, system: systemP, messages: [{ role: 'user', content: userP }] })
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error?.message || `Anthropic API ${res.status}`); }
+    const d = await res.json();
+    return d.content?.find(c => c.type === 'text')?.text || 'No response.';
+  } else {
+    // OpenAI-compatible shape (OpenAI + OpenRouter)
+    const cfg = PROVIDERS[aiProvider];
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiKey}` };
+    if (aiProvider === 'openrouter') {
+      headers['HTTP-Referer'] = 'https://github.com/pathfinder-aps';
+      headers['X-Title'] = 'PathFinder Attack Path Simulator';
+    }
+    const res = await fetch(`${cfg.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: aiModel, max_tokens: 1000, messages: [
+        { role: 'system', content: systemP },
+        { role: 'user',   content: userP }
+      ]})
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error?.message || `API ${res.status}`); }
+    const d = await res.json();
+    return d.choices?.[0]?.message?.content || 'No response.';
+  }
+}
+
+function isCorsError(err) {
+  return err instanceof TypeError && /fetch|NetworkError|Failed to fetch/i.test(err.message);
+}
+
+function corsHelpHTML() {
+  return `<b style="color:var(--red)">Network error — likely a CORS block.</b><br><br>
+You're opening the file directly (<code>file://</code>). OpenAI and OpenRouter block requests from file:// origins.<br><br>
+<b>Fix — serve it locally instead:</b><br><br>
+<code style="color:var(--amber);display:block;margin:4px 0">python -m http.server 8080</code>
+<code style="color:var(--amber);display:block;margin:4px 0">npx serve .</code>
+<code style="color:var(--amber);display:block;margin:4px 0">npx http-server -p 8080</code><br>
+Then open <a href="http://localhost:8080" style="color:var(--accent)" target="_blank">http://localhost:8080</a><br><br>
+<span style="color:var(--text3);font-size:11px">Anthropic works from file:// via a special header. All providers work when served over http://localhost.</span>`;
+}
+
+// Alias so all existing call sites work unchanged
+const callClaude = callAI;
+
+// ═══════════════════════════════════════════════════════════════
+//  SETTINGS MODAL
+// ═══════════════════════════════════════════════════════════════
+
+function openSettings() {
+  populateSettingsModal();
+  document.getElementById('settings-modal').classList.add('open');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
+
+function selectProvider(p) {
+  aiProvider = p;
+  document.querySelectorAll('.provider-btn').forEach(b => b.classList.toggle('active', b.dataset.p === p));
+  populateModelDropdown(p);
+  document.getElementById('provider-hint').innerHTML = PROVIDERS[p].hint;
+  document.getElementById('api-key-input').placeholder = PROVIDERS[p].keyPlaceholder;
+  document.getElementById('api-key-input').value = localStorage.getItem(`pf_key_${p}`) || '';
+  document.getElementById('settings-status').textContent = '';
+}
+
+function populateModelDropdown(p) {
+  const sel = document.getElementById('model-select');
+  sel.innerHTML = '';
+  const savedModel = localStorage.getItem(`pf_model_${p}`) || PROVIDERS[p].models[0].id;
+  PROVIDERS[p].models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id; opt.textContent = m.label;
+    if (m.id === savedModel) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function populateSettingsModal() {
+  document.querySelectorAll('.provider-btn').forEach(b => b.classList.toggle('active', b.dataset.p === aiProvider));
+  populateModelDropdown(aiProvider);
+  document.getElementById('api-key-input').value = localStorage.getItem(`pf_key_${aiProvider}`) || aiKey;
+  document.getElementById('api-key-input').placeholder = PROVIDERS[aiProvider].keyPlaceholder;
+  document.getElementById('provider-hint').innerHTML = PROVIDERS[aiProvider].hint;
+  document.getElementById('settings-status').textContent = '';
+}
+
+function toggleKeyVis() {
+  const inp = document.getElementById('api-key-input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function saveSettings() {
+  const key   = document.getElementById('api-key-input').value.trim();
+  const model = document.getElementById('model-select').value;
+  const status = document.getElementById('settings-status');
+  if (!key) {
+    status.style.color = 'var(--red)';
+    status.textContent = '⚠ Please paste an API key.';
+    return;
+  }
+  aiKey   = key;
+  aiModel = model;
+  localStorage.setItem('pf_provider', aiProvider);
+  localStorage.setItem('pf_model',    aiModel);
+  localStorage.setItem('pf_key',      aiKey);
+  localStorage.setItem(`pf_key_${aiProvider}`,   aiKey);
+  localStorage.setItem(`pf_model_${aiProvider}`, aiModel);
+
+  // Update UI badges
+  document.getElementById('provider-badge').textContent = PROVIDERS[aiProvider].label;
+  const short = aiModel.split('/').pop().replace(/-\d{8}$/, '');
+  document.querySelector('.model-tag').textContent = short;
+
+  status.style.color = 'var(--green)';
+  status.textContent = '✓ Saved! Provider: ' + PROVIDERS[aiProvider].label + ' / ' + short;
+  setTimeout(closeSettings, 900);
+}
+
+async function runAIAnalysis() {
+  if (nodes.length < 2) { addAIMsg('warn', 'Add at least 2 connected nodes before running analysis.'); return; }
+  if (aiLoading) return;
+  aiLoading = true;
+  document.getElementById('analyze-btn').disabled = true;
+
+  edges.forEach(e => e.isAttackPath = false);
+  draw();
+
+  const loadId = addAILoading('Running full attack graph analysis');
+  try {
+    const report = await callClaude(SYSTEM_PROMPT, graphToContext());
+    removeLoading(loadId);
+    lastReport = report;
+    renderStructuredReport(report);
+    highlightAttackPaths();
+  } catch (err) {
+    removeLoading(loadId);
+    addAIMsg('alert', isCorsError(err) ? corsHelpHTML() : `Analysis failed: ${err.message}`);
+  }
+  aiLoading = false;
+  document.getElementById('analyze-btn').disabled = false;
+  draw();
+}
+
+function renderStructuredReport(text) {
+  const sections = text.split(/^##\s+/m).filter(Boolean);
+  sections.forEach(sec => {
+    const lines = sec.trim().split('\n');
+    const heading = lines[0].trim();
+    const body = lines.slice(1).join('\n').trim();
+    const isAlert = /CRITICAL|ATTACK PATH|ESCALATION/i.test(heading);
+    const isWarn  = /RISK/i.test(heading);
+    const formatted = body
+      .replace(/PATH \d+:/g, m => `<span style="color:var(--red);font-weight:700">${m}</span>`)
+      .replace(/T\d{4}(\.\d+)?/g, m => `<span style="color:var(--amber)">${m}</span>`)
+      .replace(/CRITICAL|HIGH RISK/g, m => `<span style="color:var(--red);font-weight:700">${m}</span>`)
+      .replace(/\n/g, '<br>');
+    addAIMsg(isAlert ? 'alert' : isWarn ? 'warn' : '', `<div class="ai-section-head">${heading}</div>${formatted}`);
+  });
+}
+
+function highlightAttackPaths() {
+  const highRiskNodes = nodes.filter(n => NODE_CFG[n.type]?.risk === 3).map(n => n.id);
+  const compromised = nodes.filter(n => n.isCompromised).map(n => n.id);
+  let pathCount = 0;
+  edges.forEach(e => {
+    const isFromCompromised = compromised.includes(e.from);
+    const isToHighValue = highRiskNodes.includes(e.to);
+    const isDangerous = ['AdminTo','GenericAll','WriteDACL','Kerberoastable','ExecuteDCOM','AllowedToDelegate'].includes(e.type);
+    if (isFromCompromised || isToHighValue || isDangerous) {
+      e.isAttackPath = true; pathCount++;
+    }
+  });
+  document.getElementById('s-paths').textContent = pathCount;
+  document.getElementById('s-depth').textContent = Math.max(3, Math.round(pathCount * 1.4));
+  draw();
+}
+
+async function analyzeNode(id) {
+  const n = nodes.find(x => x.id === id);
+  if (!n || aiLoading) return;
+  aiLoading = true;
+  const loadId = addAILoading(`Analyzing ${n.name}`);
+  const sys = `You are a red team analyst. Give a focused node analysis in max 150 words. Cover: (1) what makes this node dangerous or valuable, (2) specific attack techniques an adversary would use to exploit or pivot through it (cite MITRE ATT&CK IDs), (3) one specific defensive control. Be technical and direct.`;
+  try {
+    const resp = await callClaude(sys, `${graphToContext()}\n\nFocus node: ${n.name} [${NODE_CFG[n.type]?.label}]${n.isCompromised ? ' (COMPROMISED)' : ''}`);
+    removeLoading(loadId);
+    addAIMsg('', `<div class="ai-section-head">Node: ${n.name}</div>${resp.replace(/\n/g,'<br>')}`);
+  } catch(err) { removeLoading(loadId); addAIMsg('alert', isCorsError(err) ? corsHelpHTML() : `Failed: ${err.message}`); }
+  aiLoading = false;
+}
+
+async function sendQuery() {
+  const inp = document.getElementById('ai-input');
+  const q = inp.value.trim();
+  if (!q || aiLoading) return;
+  inp.value = '';
+  addAIMsg('user', q);
+  if (nodes.length === 0) { addAIMsg('warn', 'No network graph loaded. Add nodes first.'); return; }
+  aiLoading = true;
+  const loadId = addAILoading('Reasoning over graph');
+  const sys = `You are an expert red team analyst. Answer questions about the provided network graph concisely and technically. Reference specific nodes, MITRE ATT&CK techniques, and realistic attack scenarios. Max 200 words.`;
+  try {
+    const resp = await callClaude(sys, `${graphToContext()}\n\nQuestion: ${q}`);
+    removeLoading(loadId);
+    addAIMsg('', resp.replace(/T\d{4}(\.\d+)?/g, m => `<span style="color:var(--amber)">${m}</span>`).replace(/\n/g,'<br>'));
+  } catch(err) { removeLoading(loadId); addAIMsg('alert', isCorsError(err) ? corsHelpHTML() : `Failed: ${err.message}`); }
+  aiLoading = false;
+}
+
+function quickQuery(q) { document.getElementById('ai-input').value = q; sendQuery(); }
+
+// ═══════════════════════════════════════════════════════════════
+//  AI OUTPUT HELPERS
+// ═══════════════════════════════════════════════════════════════
+function addAIMsg(type, html) {
+  const out = document.getElementById('ai-output');
+  const div = document.createElement('div');
+  div.className = `ai-msg ${type}`;
+  div.innerHTML = `<div class="ai-msg-label">${type === 'user' ? 'You' : type === 'alert' ? 'Threat Intel' : type === 'warn' ? 'Risk Engine' : 'AI Engine'}</div><div class="ai-msg-body">${html}</div>`;
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+  return div;
+}
+
+function addAILoading(msg) {
+  const out = document.getElementById('ai-output');
+  const id = 'load-' + Date.now();
+  const div = document.createElement('div');
+  div.className = 'ai-msg loading-msg'; div.id = id;
+  div.innerHTML = `<div class="ai-msg-label">AI Engine</div><div class="ai-msg-body"><span id="${id}-txt">${msg}</span><span class="loading-dots"></span></div>`;
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+  return id;
+}
+
+function removeLoading(id) { document.getElementById(id)?.remove(); }
+
+function clearAIOutput() {
+  document.getElementById('ai-output').innerHTML = `<div class="ai-msg system"><div class="ai-msg-label">PathFinder Engine</div><div class="ai-msg-body" style="color:var(--text2)">Graph cleared. Build a new network and run analysis.</div></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  IMPORT / EXPORT
+// ═══════════════════════════════════════════════════════════════
+function importJSON() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json';
+  input.onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        nodes = data.nodes || []; edges = data.edges || [];
+        nodeIdCounter = Math.max(0, ...nodes.map(n => n.id));
+        draw();
+        addAIMsg('system', `Imported: ${nodes.length} nodes, ${edges.length} edges.`);
+      } catch { addAIMsg('alert', 'Invalid JSON file.'); }
+    };
+    r.readAsText(f);
+  };
+  input.click();
+}
+
+function exportReport() {
+  const graphJSON = JSON.stringify({ nodes, edges }, null, 2);
+  const report = `PATHFINDER ATTACK PATH REPORT
+Generated: ${new Date().toISOString()}
+======================================
+
+GRAPH DATA (JSON)
+-----------------
+${graphJSON}
+
+======================================
+
+AI ANALYSIS
+-----------
+${lastReport || '(Run AI analysis first)'}
+
+======================================
+Powered by PathFinder v1.0 + Claude AI
+`;
+  document.getElementById('export-content').textContent = report;
+  document.getElementById('export-modal').classList.add('open');
+}
+
+function copyExport() {
+  navigator.clipboard.writeText(document.getElementById('export-content').textContent);
+}
+
+function downloadExport() {
+  const blob = new Blob([document.getElementById('export-content').textContent], { type: 'text/plain' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `pathfinder-report-${Date.now()}.txt`; a.click();
+}
+
+function closeExport() { document.getElementById('export-modal').classList.remove('open'); }
+</script>
+</body>
+</html>

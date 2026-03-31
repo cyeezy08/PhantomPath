@@ -1,0 +1,9 @@
+# PathFinder — no external dependencies required for core functionality.
+# The CLI uses Python's built-in urllib for all API calls.
+# The web frontend is a single self-contained HTML file.
+#
+# Optional: install the Anthropic SDK if you prefer SDK-style usage
+# anthropic>=0.25.0
+#
+# Optional: install openai SDK for OpenAI/OpenRouter
+# openai>=1.0.0
