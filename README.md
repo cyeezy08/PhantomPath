@@ -3,6 +3,8 @@
 A BloodHound-inspired attack path simulator powered by graph theory and AI.
 Map privilege escalation chains, lateral movement routes, and critical security gaps in Active Directory environments using Claude, GPT-4o, Gemini, Mistral, and more.
 
+**<h1>If you want to see all demos etc on learning how to train with this, or general idea of how it works check out the PATH  folder</h1>**
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-green.svg)](https://python.org)
 [![No Dependencies](https://img.shields.io/badge/Dependencies-None-brightgreen.svg)]()
