@@ -1,4 +1,4 @@
-# PathFinder - AI-Powered Attack Path Simulator
+# PhantomPath - AI-Powered Attack Path Simulator
 
 A BloodHound-inspired attack path simulator powered by graph theory and AI.
 Map privilege escalation chains, lateral movement routes, and critical security gaps in Active Directory environments using Claude, GPT-4o, Gemini, Mistral, and more.
